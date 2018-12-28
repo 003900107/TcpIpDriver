@@ -1,0 +1,29 @@
+﻿生成启动时间为 2017/10/13 10:37:22。
+     1>项目“D:\ARC Informatique\PcVue 11.2\Development kits\Protocol Toolkit\Samples\TcpIpDriver - V1.1\TcpIpDriver.vcxproj”在节点 2 上(Rebuild 个目标)。
+     1>ClCompile:
+         D:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /I..\..\Include /Zi /nologo /W3 /WX /Od /Oy- /D WIN32 /D _WINDOWS /D _USRDLL /D _DEBUG /D _WINDLL /D _MBCS /D _AFXDLL /Gm- /EHsc /RTC1 /MDd /GS /Gy- /fp:precise /Zc:wchar_t /Zc:forScope /Yc"stdafx.h" /Fp"Debug\Obj\cwpTcpIpDriver.pch" /Fo"Debug\Obj\\" /Fd"Debug\Obj\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt stdafx.cpp
+         stdafx.cpp
+         D:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /I..\..\Include /Zi /nologo /W3 /WX /Od /Oy- /D WIN32 /D _WINDOWS /D _USRDLL /D _DEBUG /D _WINDLL /D _MBCS /D _AFXDLL /Gm- /EHsc /RTC1 /MDd /GS /Gy- /fp:precise /Zc:wchar_t /Zc:forScope /Yu"stdafx.h" /Fp"Debug\Obj\cwpTcpIpDriver.pch" /Fo"Debug\Obj\\" /Fd"Debug\Obj\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt IpServer.cpp TcpIpDriver.cpp TcpIpDriverEquipment.cpp TcpIpDriverFrame.cpp TcpIpDriverNetwork.cpp
+         IpServer.cpp
+         TcpIpDriver.cpp
+         TcpIpDriverEquipment.cpp
+         TcpIpDriverFrame.cpp
+         TcpIpDriverNetwork.cpp
+         正在生成代码...
+       ResourceCompile:
+         C:\Program Files (x86)\Windows Kits\8.0\bin\x86\rc.exe /D _DEBUG /D _AFXDLL /l"0x0409" /IDebug\Obj\ /nologo /fo"Debug\Obj\TcpIpDriver.res" TcpIpDriver.rc 
+       Link:
+         D:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"..\..\..\..\Bin\cwpTcpIpDriver.dll" /INCREMENTAL:NO /NOLOGO /LIBPATH:..\..\Lib cw32.lib /DEF:".\TcpIpDriver.def" /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /manifestinput:"D:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\Include\Manifest\dpiaware.manifest" /DEBUG /PDB:"..\..\..\..\Bin\cwpTcpIpDriver.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"Debug\Obj\cwpTcpIpDriver.lib" /MACHINE:X86 /DLL Debug\Obj\TcpIpDriver.res
+         Debug\Obj\IpServer.obj
+         Debug\Obj\TcpIpDriver.obj
+         Debug\Obj\TcpIpDriverEquipment.obj
+         Debug\Obj\TcpIpDriverFrame.obj
+         Debug\Obj\TcpIpDriverNetwork.obj
+         Debug\Obj\stdafx.obj
+            正在创建库 Debug\Obj\cwpTcpIpDriver.lib 和对象 Debug\Obj\cwpTcpIpDriver.exp
+         TcpIpDriver.vcxproj -> D:\ARC Informatique\PcVue 11.2\Development kits\Protocol Toolkit\Samples\TcpIpDriver - V1.1\..\..\..\..\Bin\cwpTcpIpDriver.dll
+     1>已完成生成项目“D:\ARC Informatique\PcVue 11.2\Development kits\Protocol Toolkit\Samples\TcpIpDriver - V1.1\TcpIpDriver.vcxproj”(Rebuild 个目标)的操作。
+
+生成成功。
+
+已用时间 00:00:02.58

@@ -18,3 +18,5 @@
 
 #include <cwdef.h>          // CimWay headers
 #include <cwtcpipintf.h>
+
+//#define DEBUG_C

@@ -1,30 +1,44 @@
 #pragma once
+#include "IpServer.h"
 
-class PROT_EXPORT TcpIpDriverNetwork : public _ProtNetwork
+#include "log.h"
+using namespace LOGGER;
+
+
+class CipNetwork : public _ProtNetwork, public CIPServer
 {
+ 
+private:
+
+	CW_UCHAR	m_ucFrameType;
+
+	CConnectionContext *m_pConnectionContext;
+
+	BOOL m_bErrorWatchdog;
+	BOOL m_bConnexionOK;
+
+	unsigned short m_usErrGetId;
+	unsigned short m_usDelay;		//帧数据延时
+
+	void *m_Eq;				//网络接口指针
+
 public:
+    CList<_ProtEqt*,_ProtEqt*>  llDevices; 
+	//virtual _ProtFrame *CreateProtFrame	(CW_USHORT usProtocolDataType,CW_USHORT usCwDataType);
+    virtual _ProtEqt *CreateProtEqt(CW_USHORT usType);
+	virtual _ProtRet Start_Async(_ProtStartNetworkCmd *pStartNetworkCmd);
+	virtual _ProtRet Stop_Async	(_ProtStopNetworkCmd *pStartNetworkCmd);
 
-    // Called at the intitialization of the driver
-    //void OnInitialize(
-    //    _AD *adFile);
+    virtual bool GetIDFromFrame(CConnectionContext &ConnectionContext);
+    virtual bool OnReceive(CConnectionContext &ConnectionContext, char *pcReceivedBuffer, DWORD &dwReceivedBufferSize, DWORD &dwReceivedBufferCurrentIndex);
 
-    // Called on driver close
-    //void OnTerminate();
+	virtual void OnAccept(CConnectionContext &ConnectionContext, const CString &strIpAddress, const USHORT &usPortNumber);
+	//virtual void OnClose(CConnectionContext &ConnectionContext, const BOOL bCloseByRemote);
 
-    // Called on driver start-up
-    _ProtRet Start_Async(
-        _ProtStartNetworkCmd *pStartNetworkCmd);
-
-    // Called on driver stopped
-    _ProtRet Stop_Async(
-        _ProtStopNetworkCmd *pStopNetworkCmd);
-    
-      // Called at the intitialization in order to instanciate all the Equipment classes
-    _ProtEqt *CreateProtEqt(
-        CW_USHORT usType);
-
-    // Tell the behaviour of the driver to CimWay 
-    // CW_FLUX_MONO - For serial Driver : Serialisation of all the request at the network level
-    // CW_FLUX_MULTI - For Tcp/Ip Driver : Serialisation of the request at the equipment level if you have 4 equipment you will e activated in parallel on your 4 equipment class.
     CW_USHORT GetFluxManagement();
+
+private:
+	CLogger* m_pLogger;
+	void initLog(CString strLogName);
 };
+

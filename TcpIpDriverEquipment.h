@@ -1,23 +1,39 @@
 #pragma once
 
+#include "TcpIpDriverNetwork.h"
+
+#include "log.h"
+using namespace LOGGER;
+
 class IprotTCPIPCallBack;
 class IcwTCPIPIntf;
 
 class PROT_EXPORT TcpIpDriverEquipment : public _ProtEqt
 {
 private:
+	CipNetwork*   m_pNet;		//服务器指针
     unsigned char m_ucAddress;
     CString m_strIpAddress;
     unsigned short m_usPort;
-    unsigned long m_ulReconnectionPeriod;
-
     unsigned short m_usTransactionId;
 
-    //Tcp/Ip class
-    IprotTCPIPCallBack * m_IprotTCPIPCallBack;
-    IcwTCPIPIntf * m_pcwTCPIPIntf;
+	unsigned short m_iMaxCountCommError;
+	unsigned short m_iCountCommErrors;
+	unsigned short m_usDelay;	//帧延时
+
+    CConnectionContext *m_pConnectionContext;
+
+	CLogger* m_pLogger;
+private:
+	void initLog(CString strLogName);
 
 public:
+	unsigned short m_usStartDelay;	//启动延时
+	bool		   m_bReConnect;	//重新连接标志
+	unsigned short m_iCountCommLenghtErrors;
+
+public:
+    void setConnectionContext(CConnectionContext *a_pConnectionContext);
     // Called at the intitialization of the driver
     //void OnInitialize(
     //    _AD *adFile);
@@ -41,10 +57,7 @@ public:
     // CallBack fonction when receiving data from Tcp/Ip
     // If return true no all data received OK
     // If return false waiting to receive more data
-    bool OnReceive(
-        CW_LPC_CHAR a_pcRcvBuffer,  // [in] Ptr on buffer containing the received data
-        int a_iReceiveResult);      // [in] Number of bytes received
-
+    void CloseConnectionContext();
     int TcpIpDriverEquipment::SendRcvFrame(
         CW_LPC_UCHAR a_pcBufferToSend,
         const USHORT a_usSendBufferSize,
@@ -53,31 +66,12 @@ public:
 
     unsigned char GetEqtAddress(void) { return m_ucAddress; }
     unsigned short GetTransactionId(void) { return m_usTransactionId++; }
+	void SetReconnect(bool result) { m_bReConnect = result; }
 
     CW_LP_UCHAR m_pcRcvBuffer;          // Ptr on the buffer into which the data has to be received
     CW_USHORT m_usSizeofResponseBuffer; // Max number of byte that can be received
     CW_USHORT m_iReceiveCount;          // Total number of bytes received
-};
 
-// Driver CallBack class definition
-class IprotTCPIPCallBack : public IcwTCPIPCallBack
-{
-private:
-    TcpIpDriverEquipment *m_pEquipment;
-
-public:
-    IprotTCPIPCallBack(
-        TcpIpDriverEquipment * a_pEquipment) { m_pEquipment = a_pEquipment; }
-public:
-
-    // Called when the conneciton is established
-    virtual void OnConnectionReady() {}
-
-    // Called when the conneciton is broken 
-    virtual void OnConnectionAbort() {}
-
-    // Called when dat are received
-    virtual bool OnReceive(
-        CW_LPC_CHAR a_pcRcvBuffer,  // [in] Ptr on buffer containing the received data
-        int a_iReceiveResult);      // [in] Number of bytes received
+	//181107 增加错误报文显示
+	void printData(const unsigned char* pTxData, short TxLength, unsigned char* pRxData, short RxLength);
 };

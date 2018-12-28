@@ -6,9 +6,13 @@
 #include "TcpIpDriver.h"
 #include "TcpIpDriverNetwork.h"
 
+
+
+
 // Display the driver name and version in the Event viewer
 CW_C_EXPORT void GetProtocolVersion(struct _CwVersion *pProtVersion)
 {
+
     CWTRACE(PUS_PROTOC1, LVL_BIT0, "TcpIpDriver.GetProtocolVersion");
     pProtVersion->MajorVersion = CWPI_MAJOR_VERSION;
     pProtVersion->MinorVersion = CWPI_MINOR_VERSION;
@@ -19,5 +23,5 @@ CW_C_EXPORT void GetProtocolVersion(struct _CwVersion *pProtVersion)
 // Entry point. Instanciation of the Driver network class
 CW_C_EXPORT _ProtNetwork *CreateProtNetwork(CW_USHORT usType)
 {
-    return new TcpIpDriverNetwork;
+    return new CipNetwork;
 }

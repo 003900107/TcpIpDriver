@@ -51,8 +51,8 @@
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Configuration)\Obj\</IntDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Configuration)\Obj\</IntDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Configuration)\</OutDir>
-    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Configuration)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">..\..\..\..\Bin\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">D:\ARC Informatique\PcVue 11.2\Bin\</OutDir>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">cwp$(ProjectName)</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">cwp$(ProjectName)</TargetName>
   </PropertyGroup>
@@ -123,6 +123,8 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="IpServer.cpp" />
+    <ClCompile Include="log.cpp" />
     <ClCompile Include="TcpIpDriver.cpp" />
     <ClCompile Include="TcpIpDriverEquipment.cpp" />
     <ClCompile Include="TcpIpDriverFrame.cpp" />
@@ -137,6 +139,8 @@
     <None Include="TcpIpDriver.rc2" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="IpServer.h" />
+    <ClInclude Include="log.h" />
     <ClInclude Include="ProtocolInfo.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="TcpIpDriver.h" />

@@ -72,6 +72,8 @@ protected:
 	static void WINAPI ConnectionThreadRoutine(CConnectionContext *pConnectionContext);
 	void ConnectionThreadRun(CConnectionContext *pConnectionContext);
 
+
+
 	ServerState m_ServerState;
 
 public:
@@ -90,6 +92,7 @@ public:
 	BOOL RemoveConnection(CConnectionContext *pConnectionContext);
 
 	const char *GetReceivedFrame(CConnectionContext &ConnectionContext);
+	USHORT GetServerPort(void) { return m_usPortNumber; }
 
 	virtual void OnAccept(CConnectionContext &ConnectionContext, const CString &strIpAddress, const USHORT &usPortNumber) = 0;
 	virtual void OnClose(CConnectionContext &ConnectionContext, const BOOL bCloseByRemote); //= 0;

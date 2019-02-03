@@ -1,8 +1,10 @@
 #pragma once
 #include "IpServer.h"
 
-#include "log.h"
-using namespace LOGGER;
+#ifdef LOG_DEBUG
+	#include "log.h"
+	using namespace LOGGER;
+#endif
 
 
 class CipNetwork : public _ProtNetwork, public CIPServer
@@ -38,7 +40,9 @@ public:
     CW_USHORT GetFluxManagement();
 
 private:
+#ifdef LOG_DEBUG
 	CLogger* m_pLogger;
+#endif
 	void initLog(CString strLogName);
 };
 

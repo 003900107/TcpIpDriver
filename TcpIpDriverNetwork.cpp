@@ -25,6 +25,9 @@ _ProtEqt *CipNetwork::CreateProtEqt(CW_USHORT usType)
     CWTRACE(PUS_PROTOC1, LVL_BIT1, "%s::CreateProtNetwork  Type=%d", m_pCwNetwork->GetGlobalName(), usType);
     TcpIpDriverEquipment * Eq = new TcpIpDriverEquipment();
     llDevices.AddHead((_ProtEqt*)Eq);
+	int count = llDevices.GetCount();
+
+	Eq->SetInitializedState(false);
 
 	m_Eq = Eq;
     return Eq;
@@ -59,6 +62,8 @@ _ProtRet CipNetwork::Start_Async(_ProtStartNetworkCmd *pStartNetworkCmd)
 			if(m_usDelay == 0)
 				m_usDelay = 5000;
 		}
+		m_usDelay = 10000;		//test 1229
+
 
 		m_pCwNetwork->CloseUserAttributes_Sync(huserAttributes);
 	}
@@ -68,7 +73,9 @@ _ProtRet CipNetwork::Start_Async(_ProtStartNetworkCmd *pStartNetworkCmd)
 
 	m_usErrGetId = 0;  //tyh 170731 init
 
+#ifdef	LOG_DEBUG
 	initLog(m_pCwNetwork->GetGlobalName());
+#endif
 
 	StartListening(usPortNumber);
     pStartNetworkCmd->Ack();
@@ -77,6 +84,7 @@ _ProtRet CipNetwork::Start_Async(_ProtStartNetworkCmd *pStartNetworkCmd)
 
 _ProtRet CipNetwork::Stop_Async(_ProtStopNetworkCmd *pStartNetworkCmd)
 {
+	CWTRACE(PUS_PROTOC1, LVL_BIT5, "%s::Stop_Async", m_pCwNetwork->GetGlobalName());
 	StopListening();
 
 	POSITION pos = llDevices.Find((TcpIpDriverEquipment*)m_Eq);
@@ -87,11 +95,13 @@ _ProtRet CipNetwork::Stop_Async(_ProtStopNetworkCmd *pStartNetworkCmd)
 		m_Eq = NULL;
 	}
 
+#ifdef LOG_DEBUG
 	if (m_pLogger != NULL)
 	{
 		delete m_pLogger;
 		m_pLogger = NULL;
 	}
+#endif
 
 	pStartNetworkCmd->Ack();
 
@@ -100,83 +110,48 @@ _ProtRet CipNetwork::Stop_Async(_ProtStopNetworkCmd *pStartNetworkCmd)
 
 bool CipNetwork::GetIDFromFrame(CConnectionContext &ConnectionContext)
 {
-    //Modbus frame to get the ID
-    char ucRequest[255];
-     unsigned short usId   = 0;
-    unsigned short usIndex = 0;
-    ucRequest[usIndex++] = (unsigned char)(usId/0x100);
-    ucRequest[usIndex++] = (unsigned char)(usId%0x100);
-    ucRequest[usIndex++] = 0;
-    ucRequest[usIndex++] = 0;
-    ucRequest[usIndex++] = 0;
-    ucRequest[usIndex++] = READ_REQUEST_SIZE;
-    ucRequest[usIndex++] = 0;//Boradcast //pEqt->GetEqtAddress();
-    ucRequest[usIndex++] = READ_HOLDING_REG;
-    ucRequest[usIndex++] = 0;//FrameAdd
-    ucRequest[usIndex++] = 0;//FrameAdd
-    ucRequest[usIndex++] = 0;//DataSize
-    ucRequest[usIndex++] = 1;//DataSize
-    //--------------------------
+	//Modbus frame to get the ID
+	char ucRequest[255];
+	unsigned short usId    = 0;
+	unsigned short usIndex = 0;
+
+	ucRequest[usIndex++] = (unsigned char)(usId/0x100);
+	ucRequest[usIndex++] = (unsigned char)(usId%0x100);
+	ucRequest[usIndex++] = 0;
+	ucRequest[usIndex++] = 0;
+	ucRequest[usIndex++] = 0;
+	ucRequest[usIndex++] = READ_REQUEST_SIZE;
+	ucRequest[usIndex++] = 0;//Boradcast //pEqt->GetEqtAddress();
+	ucRequest[usIndex++] = READ_HOLDING_REG;
+	ucRequest[usIndex++] = 0;//FrameAdd
+	ucRequest[usIndex++] = 0;//FrameAdd
+	ucRequest[usIndex++] = 0;//DataSize
+	ucRequest[usIndex++] = 1;//DataSize
+	//--------------------------
 
     int iSendResult=0;
 
     iSendResult = send(ConnectionContext.m_socketConnection, ucRequest, usIndex, 0);
-    if (iSendResult == SOCKET_ERROR) 
+    if ((iSendResult == SOCKET_ERROR)||(iSendResult == 0)) 
 	{
        //Error at sending request!
-		ConnectionContext.m_ConnectionState = ConnectionClosed;
-        closesocket(ConnectionContext.m_socketConnection);
         OnClose(ConnectionContext,false);
-        
-		ConnectionContext.m_socketConnection = INVALID_SOCKET;
+		CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ 设备地址召唤链路出错，关闭链接");
+ 
 		return true;
     }
 	else
 	{
         int iTimeout = m_usDelay;
         setsockopt(ConnectionContext.m_socketConnection,SOL_SOCKET,SO_RCVTIMEO,(char *)&iTimeout,sizeof(int));
-        
+
 		int iReceiveResult = recv(ConnectionContext.m_socketConnection, ConnectionContext.m_pcBuffer, 1024, 0);
-		if ((iReceiveResult == 0) || (iReceiveResult == SOCKET_ERROR)
-			|| (ConnectionContext.m_usErrGetId==5))
+		if (iReceiveResult == 0/*SOCKET_ERROR*/)
 		{
-			if(ConnectionContext.m_usErrGetId >= 4)		//tyh 170731  增加多次发送ID请求帧
-			{
-				if (ConnectionContext.m_usErrGetId==5)
-				{
-					CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ 设备地址召唤出错超限，关闭链接");
-				}
-				else
-				{
-					CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ 设备地址召唤无应答，关闭链接");
-				}
+			OnClose(ConnectionContext,true);
+			CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ 接收设备地址链路出错，关闭链接");
 
-/*
-				// Closing connection
-				EnterCriticalSection(&ConnectionContext.m_csConnectionState);
-
-				if(!ConnectionContext.m_bLocalClose)
-				{
-					ConnectionContext.m_ConnectionState = ConnectionClosed;
-					closesocket(ConnectionContext.m_socketConnection);
-					OnClose(ConnectionContext,true);
-				}
-				else
-				{
-					ConnectionContext.m_ConnectionState = ConnectionClosed;
-					OnClose(ConnectionContext,false);
-				}			
-
-				ConnectionContext.m_socketConnection = INVALID_SOCKET;
-				LeaveCriticalSection(&ConnectionContext.m_csConnectionState);
-*/
-				OnClose(ConnectionContext,true);
-				//m_usErrGetId = 0;		//tyh 170731 
-
-				return true;
-			}
-
-			ConnectionContext.m_usErrGetId++;		//tyh 170731  
+			return true;
 		}
 		else
 		{
@@ -184,8 +159,29 @@ bool CipNetwork::GetIDFromFrame(CConnectionContext &ConnectionContext)
 			DWORD dwReceivedBufferSize=1024;
 			DWORD dwReceivedBufferCurrentIndex=0;
 
-            //Process frame and find device in supervisor
-			return OnReceive(ConnectionContext, ConnectionContext.m_pcBuffer, dwReceivedBufferSize, dwReceivedBufferCurrentIndex);
+			if(iReceiveResult > 0)
+			{
+				//Process frame and find device in supervisor
+				if(OnReceive(ConnectionContext, ConnectionContext.m_pcBuffer, dwReceivedBufferSize, dwReceivedBufferCurrentIndex))
+				{
+					ConnectionContext.m_usErrGetId = 0;
+					return true;
+				}
+				else
+					ConnectionContext.m_usErrGetId++;
+			}
+			else
+			{
+				ConnectionContext.m_usErrGetId++;
+			}
+
+			if(ConnectionContext.m_usErrGetId > 3)	
+			{
+				OnClose(ConnectionContext,true);
+				CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ 设备地址召唤出错超限，关闭链接");
+
+				return true;
+			}
 		}
     }
 
@@ -196,6 +192,7 @@ bool CipNetwork::OnReceive(CConnectionContext &ConnectionContext, char *pcReceiv
 {
     //Include more checkings
     int length = pcReceivedBuffer[8];
+	bool bResult = false;
     
     if(length==2)
     {
@@ -208,22 +205,30 @@ bool CipNetwork::OnReceive(CConnectionContext &ConnectionContext, char *pcReceiv
         {
             TcpIpDriverEquipment* pEq= (TcpIpDriverEquipment*)llDevices.GetNext(pos);
             unsigned long lIDEq=pEq->m_pCwEqt->GetAddress_Sync();
-            if(iID == lIDEq)
-            {
+			if(iID == lIDEq)
+			{
 				//Sleep(pEq->m_usStartDelay);		//启动延时
-				CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ 设备接入ID：%d", iID);
-				pEq->SetReconnect(true);
-                pEq->setConnectionContext(&ConnectionContext);
+				if(pEq->GetInitializedState())
+				{
+					CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ PORT(%d)设备接入（ID：%d）",this->GetServerPort(), iID);
+					pEq->SetReconnect(true);
+					pEq->setConnectionContext(&ConnectionContext);
+					pEq->SetServerPort(this->GetServerPort());
 
-				ConnectionContext.m_usErrGetId = 0;
-                return true;
-            }
-        }
-    }
+					ConnectionContext.m_usErrGetId = 0;
 
-	ConnectionContext.m_usErrGetId++;
+					bResult = true;
+				}
+				else
+				{
+					CWTRACE(PUS_PROTOC1, LVL_BIT2, "@@@@@@@ PORT(%d)设备接入（ID：%d）尚未初始化",this->GetServerPort(), iID);
+					//OnClose(ConnectionContext,true);
+				}
+			}
+		}
+	}
 
-    return false;
+    return bResult;
 }
 
 CW_USHORT CipNetwork::GetFluxManagement()
@@ -231,6 +236,7 @@ CW_USHORT CipNetwork::GetFluxManagement()
     return CW_FLUX_MULTI;
 }
 
+#ifdef	LOG_DEBUG
 void CipNetwork::initLog(CString strLogName)
 {
 	std::string str (strLogName.GetBuffer(strLogName.GetLength()));
@@ -249,5 +255,5 @@ void CipNetwork::initLog(CString strLogName)
 
 	return;
 }
-
+#endif
 

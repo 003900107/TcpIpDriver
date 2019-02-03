@@ -39,7 +39,7 @@ Error	2016-01-26 10:13:29 TraceError sun2
 #include <string>
 
 //log单文件记录时长，单位"天"
-#define LOG_CYCLE	10
+#define LOG_CYCLE	1
 
 namespace LOGGER
 {

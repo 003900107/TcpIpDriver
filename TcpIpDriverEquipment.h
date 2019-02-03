@@ -2,8 +2,8 @@
 
 #include "TcpIpDriverNetwork.h"
 
-#include "log.h"
-using namespace LOGGER;
+//#include "log.h"
+//using namespace LOGGER;
 
 class IprotTCPIPCallBack;
 class IcwTCPIPIntf;
@@ -18,19 +18,25 @@ private:
     unsigned short m_usTransactionId;
 
 	unsigned short m_iMaxCountCommError;
-	unsigned short m_iCountCommErrors;
 	unsigned short m_usDelay;	//帧延时
+
+	bool m_bInitialized;		//设备初始化标志
+	USHORT m_usServerPort;		//保留接入端口号
 
     CConnectionContext *m_pConnectionContext;
 
-	CLogger* m_pLogger;
+
 private:
 	void initLog(CString strLogName);
+	int  recieveData(int iTimeout, int iLenght);
 
 public:
 	unsigned short m_usStartDelay;	//启动延时
 	bool		   m_bReConnect;	//重新连接标志
-	unsigned short m_iCountCommLenghtErrors;
+	unsigned short m_iCountCommErrors;
+#ifdef LOG_DEBUG
+	CLogger*       m_pEquLogger;
+#endif
 
 public:
     void setConnectionContext(CConnectionContext *a_pConnectionContext);
@@ -67,6 +73,10 @@ public:
     unsigned char GetEqtAddress(void) { return m_ucAddress; }
     unsigned short GetTransactionId(void) { return m_usTransactionId++; }
 	void SetReconnect(bool result) { m_bReConnect = result; }
+
+	bool GetInitializedState(void) { return m_bInitialized; }
+	void SetInitializedState(bool result) { m_bInitialized = result; }
+	void SetServerPort(USHORT port) { m_usServerPort = port; }
 
     CW_LP_UCHAR m_pcRcvBuffer;          // Ptr on the buffer into which the data has to be received
     CW_USHORT m_usSizeofResponseBuffer; // Max number of byte that can be received

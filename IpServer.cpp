@@ -26,8 +26,10 @@ CConnectionContext::CConnectionContext(
 	m_ConnectionState(ConnectionConnected)
 
 {
-    for(int i=0;i<MAX_SIZE_BUFFER;i++)
-        m_pcBuffer[i]=0;
+    //for(int i=0;i<MAX_SIZE_BUFFER;i++)
+    //    m_pcBuffer[i]=0;
+
+	memset(m_pcBuffer, 0, sizeof(CHAR)*MAX_SIZE_BUFFER);
 	
     InitializeCriticalSection(&m_csConnectionState);
 }
@@ -56,8 +58,6 @@ CIPServer::~CIPServer()
 
 void CIPServer::OnClose(CConnectionContext &ConnectionContext,const BOOL bCloseByRemote)
 {
-	EnterCriticalSection(&ConnectionContext.m_csConnectionState);
-
 	ConnectionContext.m_ConnectionState = ConnectionClosed;
 	ConnectionContext.m_bLocalClose = TRUE;
 	ConnectionContext.m_usErrGetId = 0;
@@ -66,6 +66,8 @@ void CIPServer::OnClose(CConnectionContext &ConnectionContext,const BOOL bCloseB
 	closesocket(ConnectionContext.m_socketConnection);
 
 	ConnectionContext.m_socketConnection = INVALID_SOCKET;
+
+	EnterCriticalSection(&ConnectionContext.m_csConnectionState);
 
 	//int count = m_listConnectionContexts.GetCount();		//test	
 	if(RemoveConnection(&ConnectionContext))		//地址请求出错，从链表中删除链接符
@@ -160,52 +162,57 @@ BOOL CIPServer::StopListening()
 	m_ServerState = ServerStopInProgress;
 
 	//关闭服务端下的客户连接
-	EnterCriticalSection(&m_csConnectionContexts);
+	CWTRACE(PUS_PROTOC1, LVL_BIT5, "PORT（%d）::Stop_listening", m_usPortNumber);
+	EnterCriticalSection(&m_csConnectionContexts);		//进入临界区
 	
 	while(m_listConnectionContexts.IsEmpty() == FALSE)
 	{
 		CConnectionContext *pConnectionContext = m_listConnectionContexts.RemoveHead();
 
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* StopListening -> close client");
+		CWTRACE(PUS_PROTOC1, LVL_BIT5, "******* StopListening -> close client: %s", pConnectionContext->m_strConnectionIpAddress);
 		Close(*pConnectionContext);
 
 		delete pConnectionContext;
 	}
 
-	LeaveCriticalSection(&m_csConnectionContexts);
+	LeaveCriticalSection(&m_csConnectionContexts);		//退出临界区
+	CWTRACE(PUS_PROTOC1, LVL_BIT5, "PORT（%d）::Stop_listening_success", m_usPortNumber);
 
 	//关闭服务端socket
 	if((iResult = closesocket(m_socketListening)) == SOCKET_ERROR)
 	{
 		iResult = WSAGetLastError();
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* 关闭服务端 error = %d", iResult);
+		CWTRACE(PUS_PROTOC1, LVL_BIT5, "PORT（%d）::关闭服务端 error = 0x%x", m_usPortNumber, iResult);
 	}
-
-	dw = WaitForSingleObject(m_hThread, 20000/*INFINITE*/);
-	switch(dw)
+	else
 	{
-	case WAIT_OBJECT_0:
-		//CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* m_hThread is signaled");
-		// The process is signaled.
-		iResult = 1;
-		break;
+		dw = WaitForSingleObject(m_hThread, 5000/*INFINITE*/);
+		CWTRACE(PUS_PROTOC1, LVL_BIT5, "PORT（%d）::等待服务器关闭", m_usPortNumber);
+		switch(dw)
+		{
+		case WAIT_OBJECT_0:
+			CWTRACE(PUS_PROTOC1, LVL_BIT5, "******* PORT（%d）::服务器关闭成功！", m_usPortNumber);
+			// The process is signaled.
+			iResult = 1;
+			break;
 
-	case WAIT_TIMEOUT:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* m_hThread not terminate!!");
-		// The process did not terminate within 5000 milliseconds.
-		iResult = 0;
-		break;
+		case WAIT_TIMEOUT:
+			CWTRACE(PUS_PROTOC1, LVL_BIT5, "******* m_hThread not terminate!!");
+			// The process did not terminate within 5000 milliseconds.
+			iResult = 0;
+			break;
 
-	case WAIT_FAILED:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* m_hThread terminate failed@@");
-		// Bad call to function (invalid handle?)
-		iResult = 0;
-		break;
+		case WAIT_FAILED:
+			CWTRACE(PUS_PROTOC1, LVL_BIT5, "******* m_hThread terminate failed@@");
+			// Bad call to function (invalid handle?)
+			iResult = 0;
+			break;
 
-	default:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* m_hThread unknow..");
-		iResult = 0;
-		break;
+		default:
+			CWTRACE(PUS_PROTOC1, LVL_BIT5, "******* m_hThread unknow..");
+			iResult = 0;
+			break;
+		}
 	}
 
 	CloseHandle(m_hThread);
@@ -270,17 +277,18 @@ void CIPServer::ThreadRun()
 			usConnectionPortNumber |= saConnection.sa_data[1] & 0x00FF;
 
 			CString strConnectionIpAddress;
-			strConnectionIpAddress.Format("%u.%u.%u.%u", saConnection.sa_data[2], saConnection.sa_data[3],
-				saConnection.sa_data[4], saConnection.sa_data[5]);
+			strConnectionIpAddress.Format("%u.%u.%u.%u", (UCHAR)saConnection.sa_data[2], (UCHAR)saConnection.sa_data[3],
+				(UCHAR)saConnection.sa_data[4], (UCHAR)saConnection.sa_data[5]);
 
 			CConnectionContext *pConnectionContext = new CConnectionContext(this, strConnectionIpAddress, usConnectionPortNumber, socketConnection);
 			pConnectionContext->m_usErrGetId = 0;	//初始化错误计数器
 
-			EnterCriticalSection(&m_csConnectionContexts);
-			
+			EnterCriticalSection(&m_csConnectionContexts);	//进入临界区
 			m_listConnectionContexts.AddTail(pConnectionContext); 
-			
-			LeaveCriticalSection(&m_csConnectionContexts);
+			LeaveCriticalSection(&m_csConnectionContexts);	//退出临界区
+
+			CWTRACE(PUS_PROTOC1, LVL_BIT5, "@@ --_-- @@ PORT:(%d)m_listConnectionContexts count(add): %d",
+				m_usPortNumber, m_listConnectionContexts.GetCount());
 
 			OnAccept(*pConnectionContext, strConnectionIpAddress, usConnectionPortNumber);
 
@@ -327,34 +335,37 @@ BOOL CIPServer::Close(CConnectionContext &ConnectionContext)
 	if((iResult=closesocket(ConnectionContext.m_socketConnection)) == SOCKET_ERROR)
 	{
 		iResult = WSAGetLastError();
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* 关闭客户端连接 error = %d", iResult);
+		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* 关闭客户端 error = 0x%x", iResult);
 	}
-
-	dw = WaitForSingleObject(ConnectionContext.m_hConnectionThread, 15000/*INFINITE*/);
-	switch(dw)
+	else
 	{
-	case WAIT_OBJECT_0:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* 关闭客户端连接成功");
-		// The process is signaled.
-		iResult = 1;
-		break;
+		dw = WaitForSingleObject(ConnectionContext.m_hConnectionThread, 5000/*INFINITE*/);
+		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* 等待客户端关闭");
+		switch(dw)
+		{
+		case WAIT_OBJECT_0:
+			CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* 关闭客户端成功");
+			// The process is signaled.
+			iResult = 1;
+			break;
 
-	case WAIT_TIMEOUT:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* ConnectionContext.m_hConnectionThread WAIT_TIMEOUT!!");
-		// The process did not terminate within 5000 milliseconds.
-		iResult = 0;
-		break;
+		case WAIT_TIMEOUT:
+			CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* ConnectionContext.m_hConnectionThread WAIT_TIMEOUT!!");
+			// The process did not terminate within 5000 milliseconds.
+			iResult = 0;
+			break;
 
-	case WAIT_FAILED:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* ConnectionContext.m_hConnectionThread WAIT_FAILED@@");
-		// Bad call to function (invalid handle?)
-		iResult = 0;
-		break;
+		case WAIT_FAILED:
+			CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* ConnectionContext.m_hConnectionThread WAIT_FAILED@@");
+			// Bad call to function (invalid handle?)
+			iResult = 0;
+			break;
 
-	default:
-		CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* ConnectionContext.m_hConnectionThread unknow..");
-		iResult = 0;
-		break;
+		default:
+			CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* ConnectionContext.m_hConnectionThread unknow..");
+			iResult = 0;
+			break;
+		}
 	}
 	
 	if(iResult)
@@ -367,7 +378,7 @@ BOOL CIPServer::RemoveConnection(CConnectionContext *pConnectionContext)
 {
 	BOOL result = FALSE;
 
-	EnterCriticalSection(&m_csConnectionContexts);
+	EnterCriticalSection(&m_csConnectionContexts);	//进入临界区
 
 	POSITION posConnectionContext = m_listConnectionContexts.Find(pConnectionContext);
 	if(posConnectionContext != NULL)
@@ -375,10 +386,12 @@ BOOL CIPServer::RemoveConnection(CConnectionContext *pConnectionContext)
 		m_listConnectionContexts.RemoveAt(posConnectionContext);	
 		//delete posConnectionContext;
 
+		CWTRACE(PUS_PROTOC1, LVL_BIT5, "@@ --_-- @@ PORT:(%d)m_listConnectionContexts count(remove): %d",
+			m_usPortNumber, m_listConnectionContexts.GetCount());
 		result = TRUE;
 	}
 
-	LeaveCriticalSection(&m_csConnectionContexts);
+	LeaveCriticalSection(&m_csConnectionContexts);	//退出临界区
 
 	return result;
 }

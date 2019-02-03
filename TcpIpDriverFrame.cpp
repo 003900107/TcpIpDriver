@@ -79,7 +79,7 @@ _ProtRet TcpIpDriverFrame::Start_Async(_ProtStartFrameCmd *pStartFrameCmd)
 
 _ProtRet TcpIpDriverFrame::Stop_Async(_ProtStopFrameCmd *pStopFrameCmd)
 {
-    CWTRACE(PUS_PROTOC1, LVL_BIT3, "%s::Stop_Async", m_pCwFrame->GetGlobalName());
+    CWTRACE(PUS_PROTOC1, LVL_BIT5, "%s::Stop_Async_sendAck", m_pCwFrame->GetGlobalName());
     pStopFrameCmd->Ack();
 
     return PR_CMD_PROCESSED;
@@ -105,10 +105,14 @@ _ProtRet TcpIpDriverFrame::Read_Async(_ProtReadCmd *pReadCmd)
 		if(CW_ERR_CMD_NOT_PROCESSED == iRet)
 			CWTRACE(PUS_PROTOC1, LVL_BIT3, "%s::Read_Async Time out",m_pCwFrame->GetGlobalName());
 
-		if (CW_ERR_CMD_NOT_PROCESSED == iRet)	//长度出错
+		if (CW_ERR_INVALID_POSITION_LENGTH == iRet)	//长度出错
 		{
 			//添加长度出错处理
 			CWTRACE(PUS_PROTOC1, LVL_BIT4, "@@@@@@@ Response length error, 0x%x", pReadCmd);
+		}
+		else
+		{
+			CWTRACE(PUS_PROTOC1, LVL_BIT6, "@@@@@@@ Response net error, %s", m_pCwFrame->GetGlobalName());
 		}
      
 		pReadCmd->Nack(&Error);
@@ -123,10 +127,10 @@ _ProtRet TcpIpDriverFrame::Read_Async(_ProtReadCmd *pReadCmd)
         Error.ErrorLevel = PEL_WARNING;
         Error.ErrorCode = usErrorCode;
 
-		pEqt->printData(m_ucRequest, usSendRequestSize, m_ucReply, m_usNbDataByte+9);
+		//pEqt->printData(m_ucRequest, usSendRequestSize, m_ucReply, m_usNbDataByte+9);
+		pEqt->m_iCountCommErrors ++;
 
         pReadCmd->Nack(&Error);
-        
 		return PR_CMD_PROCESSED;    
     }
     
@@ -156,6 +160,8 @@ _ProtRet TcpIpDriverFrame::Read_Async(_ProtReadCmd *pReadCmd)
 	}
 
 	memcpy(m_ucData, &m_ucReply[9], m_ucReply[8]);//TODO m_usNbDataByte);
+
+	pEqt->m_iCountCommErrors = 0;
     pReadCmd->Ack(m_ucData);
     
 	return PR_CMD_PROCESSED;
@@ -174,25 +180,31 @@ _ProtRet TcpIpDriverFrame::Write_Async(_ProtWriteCmd *pWriteCmd)
         Error.ErrorLevel = PEL_WARNING;
         Error.ErrorCode = 0;
         CWTRACE(PUS_PROTOC1, LVL_BIT3, "%s::Write_Async Time out",m_pCwFrame->GetGlobalName());      
-        pWriteCmd->Nack(&Error);
-        return PR_CMD_PROCESSED;
-    }
+		pWriteCmd->Nack(&Error);
+		return PR_CMD_PROCESSED;
+	}
 
-    //Check reply if every field is ok
-    unsigned short usErrorCode = CheckReply(pWriteCmd->m_CwDataType);
-    if (usErrorCode != NO_ERROR)
-    {
-        Error.ErrorClass = PEC_PROVIDE_BY_EQT; 
-        Error.ErrorLevel = PEL_WARNING;
+	//发送成功打印信息
+	CWTRACE(PUS_PROTOC1, LVL_BIT4, 
+		"@@_#_@@ send control:(%02x)(%02x)(%02x)(%02x)(%02x)(%02x)",
+		m_ucRequest[6], m_ucRequest[7], m_ucRequest[8], m_ucRequest[9], m_ucRequest[10], m_ucRequest[11]);
+
+	//Check reply if every field is ok
+	unsigned short usErrorCode = CheckReply(pWriteCmd->m_CwDataType);
+	if (usErrorCode != NO_ERROR)
+	{
+		Error.ErrorClass = PEC_PROVIDE_BY_EQT; 
+		Error.ErrorLevel = PEL_WARNING;
         Error.ErrorCode = usErrorCode;
 
-		pEqt->printData(m_ucRequest, usSendRequestSize, m_ucReply, 12);
-		pEqt->m_iCountCommLenghtErrors ++;
+		//pEqt->printData(m_ucRequest, usSendRequestSize, m_ucReply, 12);
+		pEqt->m_iCountCommErrors ++;
 
         pWriteCmd->Nack(&Error);
         return PR_CMD_PROCESSED;    
     }
 
+	pEqt->m_iCountCommErrors = 0;
     pWriteCmd->Ack();
 
     return PR_CMD_PROCESSED;
@@ -271,7 +283,13 @@ unsigned short TcpIpDriverFrame::CheckReply(CW_USHORT ucDataType)
 
 		//Checking size match with shown in frame
 		if(bWriteCmd)
+		{
 			bOnError = false;
+			
+			CWTRACE(PUS_PROTOC1, LVL_BIT4, 
+				"@@_#_@@ respond control:(%02x)(%02x)(%02x)(%02x)(%02x)(%02x)",
+				m_ucReply[6], m_ucReply[7], m_ucReply[8], m_ucReply[9], m_ucReply[10], m_ucReply[11]);
+		}
 		else
 		{
 			if((iNumOfElements != m_ucReply[8])||(iNumOfElements+3 != m_ucReply[5]))

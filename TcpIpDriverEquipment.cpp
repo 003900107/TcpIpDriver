@@ -8,27 +8,32 @@
 void TcpIpDriverEquipment::setConnectionContext(CConnectionContext *a_pConnectionContext)
 {
 	CConnectionContext* pOldConnectionContext = m_pConnectionContext;
-	m_pConnectionContext = a_pConnectionContext;
 
-	if(pOldConnectionContext != NULL)
-	{  //There was a connection and need to be removed before linking the newone  
-		m_pNet = (CipNetwork*)(m_pCwEqt->GetProtNetwork_Sync());
-		
-		if(pOldConnectionContext->m_socketConnection != INVALID_SOCKET)
-			m_pNet->Close(*pOldConnectionContext);
+	if(m_pConnectionContext != a_pConnectionContext)
+	{
+		m_pConnectionContext = a_pConnectionContext;
 
-		if(m_pNet->RemoveConnection(pOldConnectionContext))		//删除链接队列中的对象
-		{
-			CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* Reconnection success, old: 0x%X, new: 0x%X", 
-				pOldConnectionContext, m_pConnectionContext);
-			delete pOldConnectionContext;
+		if(pOldConnectionContext != NULL)
+		{  //There was a connection and need to be removed before linking the newone  
+			m_pNet = (CipNetwork*)(m_pCwEqt->GetProtNetwork_Sync());
+
+			if(pOldConnectionContext->m_socketConnection != INVALID_SOCKET)
+				m_pNet->Close(*pOldConnectionContext);
+
+			if(m_pNet->RemoveConnection(pOldConnectionContext))		//删除链接队列中的对象
+			{
+				CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* Reconnection success, old: 0x%X, new: 0x%X", 
+					pOldConnectionContext, m_pConnectionContext);
+				delete pOldConnectionContext;
+			}
 		}
 	}
 
-	 m_iCountCommErrors = 0;
-	 m_bReConnect = false;
- }
-   
+	m_pConnectionContext->m_ConnectionState = ConnectionConnected;
+	m_iCountCommErrors = 0;
+	m_bReConnect = false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 _ProtRet TcpIpDriverEquipment::Start_Async(_ProtStartEqtCmd *pStartEqtCmd)
 {
@@ -38,6 +43,7 @@ _ProtRet TcpIpDriverEquipment::Start_Async(_ProtStartEqtCmd *pStartEqtCmd)
     m_usTransactionId = rand();
 	m_iCountCommErrors = 0;  //init 170731 tyh
 	m_bReConnect = false;
+	m_bInitialized = true;
 	
 	CW_HANDLE huserAttributes;
 	_CwDataItem *pdiAttributes;
@@ -52,6 +58,8 @@ _ProtRet TcpIpDriverEquipment::Start_Async(_ProtStartEqtCmd *pStartEqtCmd)
 		}
 		if(m_iMaxCountCommError == 0)
 			m_iMaxCountCommError = 2;
+		m_iMaxCountCommError = 4;		//test 1229
+
 
 		//帧延时
 		if (m_pCwEqt->GetUserAttributes_Sync(huserAttributes,1,CWIT_UI2,&pdiAttributes)==CW_OK)
@@ -74,7 +82,9 @@ _ProtRet TcpIpDriverEquipment::Start_Async(_ProtStartEqtCmd *pStartEqtCmd)
 		m_pCwEqt->CloseUserAttributes_Sync(huserAttributes);
 	}
 
+#ifdef LOG_DEBUG
 	initLog(m_pCwEqt->GetGlobalName());
+#endif
 
 	pStartEqtCmd->Ack();
     return PR_CMD_PROCESSED;
@@ -82,19 +92,22 @@ _ProtRet TcpIpDriverEquipment::Start_Async(_ProtStartEqtCmd *pStartEqtCmd)
 
 _ProtRet TcpIpDriverEquipment::Stop_Async(_ProtStopEqtCmd *pStopEqtCmd)
 {
-    CWTRACE(PUS_PROTOC1, LVL_BIT2, "%s::Stop_Async ", m_pCwEqt->GetGlobalName());
+    CWTRACE(PUS_PROTOC1, LVL_BIT5, "%s::Stop_Async ", m_pCwEqt->GetGlobalName());
     if (m_pConnectionContext!=NULL)
     {
         // Closing connection
         CloseConnectionContext();   
     }
 
-	if (m_pLogger != NULL)
+#ifdef LOG_DEBUG
+	CWTRACE(PUS_PROTOC1, LVL_BIT5, "%s::Stop_logger ", m_pCwEqt->GetGlobalName());
+	if (m_pEquLogger != NULL)
 	{
-		delete m_pLogger;
-		m_pLogger = NULL;
+		delete m_pEquLogger;
+		m_pEquLogger = NULL;
 	}
-
+#endif
+	CWTRACE(PUS_PROTOC1, LVL_BIT5, "%s::Stop_send_Ack ", m_pCwEqt->GetGlobalName());
     pStopEqtCmd->Ack();
     return PR_CMD_PROCESSED;
 }
@@ -141,10 +154,7 @@ _ProtFrame *TcpIpDriverEquipment::CreateProtFrame(CW_USHORT usProtocolDataType,C
 // Closing connection
 void TcpIpDriverEquipment::CloseConnectionContext()
 {
-	CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* CloseConnectionContext ADDR = %d", this->m_ucAddress);
-
-	EnterCriticalSection(&m_pConnectionContext->m_csConnectionState);
-
+	CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* PORT(%d) CloseConnectionContext ADDR = %d", this->m_usServerPort, this->m_ucAddress);
 	m_pConnectionContext->m_ConnectionState = ConnectionClosed;
 /*	
 	int iResult;
@@ -156,12 +166,15 @@ void TcpIpDriverEquipment::CloseConnectionContext()
 */
 	if(m_pConnectionContext->m_socketConnection != INVALID_SOCKET)		//调用网络层接口，关闭网络链接
 	{
+		EnterCriticalSection(&m_pConnectionContext->m_csConnectionState);
+
 		m_pNet->Close(*m_pConnectionContext);
 		m_pConnectionContext->m_socketConnection = INVALID_SOCKET;
+
+		LeaveCriticalSection(&m_pConnectionContext->m_csConnectionState);
 	}
 
 	m_iCountCommErrors = 0;
-	m_iCountCommLenghtErrors = 0;
 
 	//TODO:Still remove from list at network level.
     //There was a connection and need to be removed before linking the newone  
@@ -169,7 +182,7 @@ void TcpIpDriverEquipment::CloseConnectionContext()
      //net->RemoveConnection(m_pConnectionContext);
      //net->Close(*m_pConnectionContext);
 	
-    LeaveCriticalSection(&m_pConnectionContext->m_csConnectionState);
+	CWTRACE(PUS_PROTOC1, LVL_BIT1, "******* CloseConnectionContext ADDR = %d  success", this->m_ucAddress);
 }
 
 int TcpIpDriverEquipment::SendRcvFrame(
@@ -178,152 +191,181 @@ int TcpIpDriverEquipment::SendRcvFrame(
     CW_LPC_UCHAR a_pucReceivedBuffer,
     const USHORT a_usSizeofResponseBuffer)
 {
+	int iSendResult, length;
 
     m_usSizeofResponseBuffer = a_usSizeofResponseBuffer;
     m_iReceiveCount = 0;
     m_pcRcvBuffer = (CW_LP_UCHAR)a_pucReceivedBuffer;
 
-    if(m_pConnectionContext==NULL)
-        return CW_ERR_EQT_STOPPED;
-
-    int iSendResult=0;
-    int length=a_pcBufferToSend[5]+6;
 
 	if(m_bReConnect)		//判断是否处于重新连接
 	{
-		CWTRACE(PUS_PROTOC1, LVL_BIT2, "~~~~~~~ 设备重连中，暂停发送 old_handle: 0x%X", m_pConnectionContext);
+		CWTRACE(PUS_PROTOC1, LVL_BIT4, "~~~~~~~ 设备重连中，暂停发送 old_handle: 0x%X", m_pConnectionContext);
+#ifdef	LOG_DEBUG	
+		if(m_pEquLogger != NULL)		//记录退出
+			m_pEquLogger->TraceInfo("设备重连中，暂停发送 handle: 0x%X", m_pConnectionContext);
+#endif
+
 		return CW_ERR_EQT_STOPPED;
 	}
 
-	if(m_pConnectionContext->m_ConnectionState == ConnectionConnected)		//tyh 170731 增加发送前判断网络状态
+    if(m_pConnectionContext == NULL)
 	{
-		iSendResult = send(m_pConnectionContext->m_socketConnection, 
-			(const char*)a_pcBufferToSend, length, 0);
+#ifdef	LOG_DEBUG
+		if(m_pEquLogger != NULL)		//记录退出
+			m_pEquLogger->TraceInfo("m_pConnectionContext is NULL :%s", m_pCwEqt->GetGlobalName());
+#endif 
+
+        return CW_ERR_EQT_STOPPED;
 	}
-	else
+
+	if(m_pConnectionContext->m_ConnectionState != ConnectionConnected)		//tyh 170731 增加发送前判断网络状态
 	{
-		//return CW_ERR_CMD_NOT_PROCESSED;
-		return CW_ERR_EQT_STOPPED;//CW_ERR_EQT_STOPPED;
+		return CW_ERR_EQT_STOPPED;
 	}
 
-    if (iSendResult == SOCKET_ERROR) 
-    {
-       //error at sending request!
-		if(m_iCountCommErrors >= m_iMaxCountCommError)
-		{
-			//closesocket(m_pConnectionContext->m_socketConnection);
+	//iSendResult = 0;
+	length = a_pcBufferToSend[5]+6;
+	iSendResult = send(m_pConnectionContext->m_socketConnection, (const char*)a_pcBufferToSend, length, 0);
+	if ((iSendResult == SOCKET_ERROR)||(iSendResult == 0))	//发送失败
+	{
+		CloseConnectionContext();
+		CWTRACE(PUS_PROTOC1, LVL_BIT4, "@@@@@@@ 发送链接出错，中断连接");
 
-			CloseConnectionContext();
-			m_iCountCommErrors = 0;
-			CWTRACE(PUS_PROTOC1, LVL_BIT4, "@@@@@@@ 发送错误次数超限，中断连接");
-
-			//return CW_ERR_CMD_NOT_PROCESSED;
-			return CW_ERR_EQT_STOPPED;
-		}
-		else
-		{
-			m_iCountCommErrors++;
-			return CW_ERR_CMD_NOT_PROCESSED;
-		}
+		return CW_ERR_EQT_STOPPED;
     }
-	else
-    {
-        int iTimeout = m_usDelay;	//毫秒
-        setsockopt(m_pConnectionContext->m_socketConnection,SOL_SOCKET,SO_RCVTIMEO,(char *)&iTimeout,sizeof(int));
-        int iReceiveResult = recv(m_pConnectionContext->m_socketConnection, m_pConnectionContext->m_pcBuffer, 1024, 0);
-            
-        //if(m_pConnectionContext==NULL)
-        //    return CW_ERR_CMD_NOT_PROCESSED;
-
-		if(m_iCountCommLenghtErrors > m_iMaxCountCommError)	//数据长度出错超限
+	else	//发送成功
+	{
+		int iReceiveResult = recieveData(m_usDelay, 1024);
+		if (iReceiveResult == 0)
 		{
+			//接收链路出错
 			CloseConnectionContext();
+			CWTRACE(PUS_PROTOC1, LVL_BIT4, "@@@@@@@ 接收链路出错，中断连接");		
+
 			return CW_ERR_EQT_STOPPED;
 		}
-
-
-
-		if ((iReceiveResult == 0) || (iReceiveResult == SOCKET_ERROR))
+		else	
 		{
-			if(m_iCountCommErrors >= m_iMaxCountCommError)		//增加超時发送次数
+			//接收成功
+			if(iReceiveResult == m_usSizeofResponseBuffer)	//接收长度匹配
 			{
-				CWTRACE(PUS_PROTOC1, LVL_BIT4, "@@@@@@@ 发送超时次数超限，中断连接");
-				CloseConnectionContext();		
-				//m_iCountCommErrors = 0;
-				//return CW_ERR_CMD_NOT_PROCESSED;
-				return CW_ERR_EQT_STOPPED;
+				//拷贝数据
+				EnterCriticalSection(&m_pConnectionContext->m_csConnectionState);
+				memcpy(m_pcRcvBuffer, &m_pConnectionContext->m_pcBuffer, m_usSizeofResponseBuffer/*1024*/);
+				LeaveCriticalSection(&m_pConnectionContext->m_csConnectionState);
 			}
-			else
-			{
-				m_iCountCommErrors++;
-				return CW_ERR_CMD_NOT_PROCESSED;
-			}
-		}
-		else
-		{
-			EnterCriticalSection(&m_pConnectionContext->m_csConnectionState);
-			memcpy(m_pcRcvBuffer, &m_pConnectionContext->m_pcBuffer, iReceiveResult/*1024*/);
-			LeaveCriticalSection(&m_pConnectionContext->m_csConnectionState);
-
-			//Reading correctly processed
-			if(iReceiveResult == m_usSizeofResponseBuffer)
-			{
-				m_iCountCommErrors = 0;
-			}
-			else
+			else	//接收长度出错
 			{
 				CWTRACE(PUS_PROTOC1, LVL_BIT4, 
-					"@@@@@@@ Response length error:ASK(%d), RESPONSE(%d)", 
-					m_usSizeofResponseBuffer, iReceiveResult);
-				
-				m_iCountCommErrors++;
-				
-				//printData(a_pcBufferToSend, a_usSendBufferSize, 
-				//	(unsigned char*)&m_pConnectionContext->m_pcBuffer, iReceiveResult);
+					"@@@@@@@ Response length error(ID: %d):ASK(%d), RESPONSE(%d)", 
+					a_pcBufferToSend[6], m_usSizeofResponseBuffer, iReceiveResult);
+#ifdef	LOG_DEBUG
+				//记录日志
+				m_pEquLogger->TraceError("LenghtError(ID: %d): ASK(%d), RESPONSE(%d)", 
+					a_pcBufferToSend[6], m_usSizeofResponseBuffer, iReceiveResult);
+#endif 
 
-				return CW_ERR_INVALID_POSITION_LENGTH;
+				/*printData(a_pcBufferToSend, a_usSendBufferSize, 
+				(unsigned char*)&m_pConnectionContext->m_pcBuffer, iReceiveResult);*/
+
+				//再次接收数据
+				if ((iReceiveResult = recieveData(500, 1024)) == m_usSizeofResponseBuffer)				
+				{
+					//数据正确，拷贝数据
+					EnterCriticalSection(&m_pConnectionContext->m_csConnectionState);
+					memcpy(m_pcRcvBuffer, &m_pConnectionContext->m_pcBuffer, m_usSizeofResponseBuffer/*1024*/);
+					LeaveCriticalSection(&m_pConnectionContext->m_csConnectionState);
+
+					CWTRACE(PUS_PROTOC1, LVL_BIT4, 
+						"@@@@@@@ Response length aggain (ID: %d):ASK(%d), RESPONSE(%d)", 
+						a_pcBufferToSend[6], m_usSizeofResponseBuffer, iReceiveResult);
+				}
+				else
+				{
+					m_iCountCommErrors++;
+					if(m_iCountCommErrors > m_iMaxCountCommError)	//数据长度出错超限
+					{
+						CloseConnectionContext();
+						CWTRACE(PUS_PROTOC1, LVL_BIT4, "@@@@@@@ 应答错误次数超限，中断连接");
+
+						return CW_ERR_EQT_STOPPED;
+					}
+
+					return CW_ERR_INVALID_POSITION_LENGTH;
+#ifdef	LOG_DEBUG
+					m_pEquLogger->TraceError("LenghtError ask again(ID: %d): ASK(%d), RESPONSE(%d)", 
+						a_pcBufferToSend[6], m_usSizeofResponseBuffer, iReceiveResult);
+#endif
+				}
 			}
 		}
-    }
+	}
 
-    return CW_OK;
+	return CW_OK;
 }
 
 void TcpIpDriverEquipment::printData(const unsigned char* pTxData, short TxLength, unsigned char* pRxData, short RxLength)
 {
-	char str[512];
+	char str[1024];
 	unsigned char i, j;
+	unsigned short R_lenght;
 
+	//TX
 	for(i=0, j=0; i<TxLength; i++, j+=3)
 	{
 		sprintf_s(&str[j], 4, "%02x ", *(pTxData+i));
 	}
-	CWTRACE(PUS_PROTOC1, LVL_BIT4, "%s::TX[%d] %s ",this->m_pCwEqt->GetGlobalName(), TxLength, str);
+	//CWTRACE(PUS_PROTOC1, LVL_BIT4, "%s::TX[%d] %s ",this->m_pCwEqt->GetGlobalName(), TxLength, str);
+#ifdef	LOG_DEBUG
+	m_pEquLogger->TraceError("DataTX: %s", str);
+#endif
 
-	for(i=0, j=0; i<RxLength; i++, j+=3)
+	//RX
+	if(RxLength>300)
+		R_lenght = 300;
+	else
+		R_lenght = RxLength;
+
+	for(i=0, j=0; i<R_lenght; i++, j+=3)
 	{
 		sprintf_s(&str[j], 4, "%02x ", *(pRxData+i));
 	}
-	CWTRACE(PUS_PROTOC1, LVL_BIT4, "%s::RX[%d] %s ",this->m_pCwEqt->GetGlobalName(), RxLength, str);
+	//CWTRACE(PUS_PROTOC1, LVL_BIT4, "%s::RX[%d] %s ",this->m_pCwEqt->GetGlobalName(), RxLength, str);
+#ifdef	LOG_DEBUG
+	m_pEquLogger->TraceError("DataRX: %s", str);
+#endif
 
 	return;
 }
 
-
+#ifdef	LOG_DEBUG
 void TcpIpDriverEquipment::initLog(CString strLogName)
 {
 	std::string str (strLogName.GetBuffer(strLogName.GetLength()));
 	
-	m_pLogger = new CLogger (LogLevel_Info,CLogger::GetAppPathA().append("log\\"), str);
-	//logger.TraceFatal("TraceFatal %d", 1);
-	//logger.TraceError("TraceError %s", "sun");
-	//logger.TraceWarning("TraceWarning");
-	//logger.TraceInfo("TraceInfo");
-	//logger.ChangeLogLevel(LOGGER::LogLevel_Error);
-	//logger.TraceFatal("TraceFatal %d", 2);
-	//logger.TraceError("TraceError %s", "sun2");
-	//logger.TraceWarning("TraceWarning");
-	//logger.TraceInfo("TraceInfo");
+	m_pEquLogger = new CLogger (LogLevel_Info,CLogger::GetAppPathA().append("log\\"), str);
+
+	//m_pEquLogger->TraceFatal("TraceFatal %d", 1);
+	//m_pEquLogger->TraceError("TraceError %s", "sun");
+	//m_pEquLogger->TraceWarning("TraceWarning");
+	//m_pEquLogger->TraceInfo("TraceInfo");
+	//m_pEquLogger->ChangeLogLevel(LOGGER::LogLevel_Error);
+	//m_pEquLogger->TraceFatal("TraceFatal %d", 2);
+	//m_pEquLogger->TraceError("TraceError %s", "sun2");
+	//m_pEquLogger->TraceWarning("TraceWarning");
+	//m_pEquLogger->TraceInfo("TraceInfo");
 
 	return;
+}
+#endif
+
+int TcpIpDriverEquipment::recieveData(int iTimeout, int iLenght)
+{
+	int iReceiveResult;
+
+	setsockopt(m_pConnectionContext->m_socketConnection,SOL_SOCKET,SO_RCVTIMEO,(char *)&iTimeout,sizeof(int));
+	iReceiveResult = recv(m_pConnectionContext->m_socketConnection, m_pConnectionContext->m_pcBuffer, iLenght, 0);
+
+	return iReceiveResult;
 }

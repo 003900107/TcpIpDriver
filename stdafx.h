@@ -20,3 +20,4 @@
 #include <cwtcpipintf.h>
 
 //#define DEBUG_C
+//#define LOG_DEBUG
